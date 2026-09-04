@@ -1,0 +1,14 @@
+# Loopback 1235 -> your server, so PAIR's LM Studio slot (override port 1235) adopts it.
+# ORDERING IS THE POINT: PAIR's UI broker probes engine status at 1234 only, then moves the engine
+# off an OCCUPIED 1235 (rewriting the override). So this socket may bind only after PAIR's LM Studio
+# proxy is listening on :1234 — the broker spawns that proxy only after its port step is done.
+# PartOf= stops this socket whenever PAIR restarts; the drop-in Wants= pulls it back afterwards.
+[Unit]
+Description=pair-adopt: loopback 1235 -> adopted server (socket)
+After=@PAIR_UNIT@.service
+PartOf=@PAIR_UNIT@.service
+[Socket]
+ListenStream=127.0.0.1:1235
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 180); do ss -Hltn "sport = :1234" | grep -q . && sleep 5 && exit 0; sleep 1; done; echo "PAIR proxy never bound :1234; refusing to bind 1235" >&2; exit 1'
+[Install]
+WantedBy=sockets.target

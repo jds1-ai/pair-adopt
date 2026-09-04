@@ -1,0 +1,8 @@
+[Unit]
+Description=pair-adopt: loopback 1235 -> @TARGET@ (proxy)
+Requires=pair-adopt-1235.socket
+After=pair-adopt-1235.socket
+[Service]
+ExecStart=/lib/systemd/systemd-socket-proxyd --exit-idle-time=5min @TARGET@
+PrivateTmp=yes
+PrivateNetwork=no

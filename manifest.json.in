@@ -1,0 +1,41 @@
+{
+  "engine": "lmstudio",
+  "display_name": "@DISPLAY@ (adopted via loopback 1235, in PAIR's LM Studio slot)",
+  "manifest_version": 1,
+  "platforms": {
+    "@PLATFORM@": {
+      "detect": ["@DETECT@"],
+      "install": null,
+      "uninstall": null,
+      "runtime": {
+        "mode": "command",
+        "cli": "/bin/true",
+        "bin": null,
+        "args": null,
+        "start": [["/bin/true"]],
+        "port": 1235,
+        "bind": "127.0.0.1",
+        "ready":  {"http": "http://127.0.0.1:{port}/v1/models", "status": 200, "timeout_s": 30},
+        "health": {"http": "http://127.0.0.1:{port}/v1/models", "status": 200, "interval_s": 10},
+        "stop": {"cmd": ["/bin/true"]}
+      }
+    }
+  },
+  "actions": {
+    "list_models": {
+      "description": "Models served by the adopted server (OpenAI /v1/models).",
+      "http": {"method": "GET", "path": "/v1/models"},
+      "result": {"array": "data", "field": "id"}
+    },
+    "loaded_models": {
+      "description": "The adopted server keeps its model resident; report every listed model as loaded.",
+      "http": {"method": "GET", "path": "/v1/models"},
+      "result": {"array": "data", "field": "id", "match": {"field": "owned_by", "nonempty": true}}
+    },
+    "pull_model":      {"description": "Not supported: the server is managed outside PAIR.", "cmd": ["sh", "-c", "echo 'adopted server: managed outside PAIR'; exit 1"], "model_resolution": ""},
+    "load_model":      {"description": "Not supported.", "cmd": ["sh", "-c", "echo 'adopted server: managed outside PAIR'; exit 1"], "http": null},
+    "unload_model":    {"description": "Not supported.", "cmd": ["sh", "-c", "echo 'adopted server: managed outside PAIR'; exit 1"], "http": null},
+    "list_downloaded": {"description": "Not supported.", "cmd": ["sh", "-c", "echo 'adopted server: managed outside PAIR'; exit 1"]},
+    "delete_model":    {"description": "Not supported: PAIR must never touch the server's model store.", "cmd": ["sh", "-c", "echo 'adopted server: managed outside PAIR'; exit 1"], "model_resolution": "", "remove_path": null, "restart_after": false}
+  }
+}
