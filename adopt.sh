@@ -26,10 +26,18 @@ SOCKET=pair-adopt-1235.socket; SERVICE=pair-adopt-1235.service; DROPIN="/etc/sys
 
 need_root() { [ "$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 1; }; }
 listening_1235() { ss -Hltn 'sport = :1235' | grep -q .; }
-chat() {  # $1 = base url, $2 = max_tokens
-  curl -s -m 180 "$1/v1/chat/completions" -H 'content-type: application/json' \
-    -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with the single word: routed\"}],\"max_tokens\":$2}" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); c=d["choices"][0]; print(repr(c["message"].get("content",""))[:60], "finish=", c.get("finish_reason"), "tokens=", d.get("usage",{}).get("completion_tokens"))'
+chat() {  # $1 = base url, $2 = max_tokens. Prints the result; exits 1 unless finish_reason=stop.
+  local body
+  body="$(curl -s -m 180 "$1/v1/chat/completions" -H 'content-type: application/json' \
+    -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with the single word: routed\"}],\"max_tokens\":$2}")"
+  python3 - "$body" <<'PY' || { echo "   FAIL: no completion with finish_reason=stop from $1 — response was: ${body:0:300}"; exit 1; }
+import sys, json
+try: d = json.loads(sys.argv[1])
+except Exception: d = {}
+c = (d.get("choices") or [{}])[0]
+print("  ", repr(c.get("message", {}).get("content", ""))[:60], "finish=", c.get("finish_reason"), "tokens=", d.get("usage", {}).get("completion_tokens"))
+sys.exit(0 if c.get("finish_reason") == "stop" else 1)
+PY
 }
 
 do_verify() {
@@ -37,9 +45,11 @@ do_verify() {
   echo "1. override is still ours (size):"
   [ -f "$OVERRIDE" ] || { echo "   FAIL: $OVERRIDE is gone — PAIR removed it (gate 2: port back at the bundled default)"; exit 1; }
   ls -la "$OVERRIDE"; sz=$(wc -c < "$OVERRIDE"); [ "$sz" -gt 500 ] || { echo "   FAIL: $sz bytes — PAIR rewrote it (gate 3). Was 1235 free when PAIR started?"; exit 1; }
-  echo "2. forwarder:"; systemctl is-active "$SOCKET"; curl -s -m 10 127.0.0.1:1235/v1/models | head -c 200; echo
+  echo "2. forwarder:"; systemctl is-active "$SOCKET" || { echo "   FAIL: $SOCKET is not active (is PAIR's proxy on :1234? see journalctl -u $SOCKET)"; exit 1; }
+  curl -s -m 10 127.0.0.1:1235/v1/models | head -c 200; echo
   echo "3. PAIR engine surface (up to 4 min):"
-  for i in $(seq 1 16); do out="$(curl -s -m 5 127.0.0.1:14322/v1/models)"; echo "   t+$((i*15))s $out"; grep -q "$MODEL" <<<"$out" && break; sleep 15; done
+  seen=0; for i in $(seq 1 16); do out="$(curl -s -m 5 127.0.0.1:14322/v1/models)"; echo "   t+$((i*15))s $out"; grep -q "$MODEL" <<<"$out" && { seen=1; break; }; sleep 15; done
+  [ "$seen" = 1 ] || { echo "   FAIL: $MODEL never appeared under lmstudio (gate 1: does --detect exist on this box? is the id exactly what $TARGET/v1/models lists?)"; exit 1; }
   echo "4. routed via this node's :1234:"; chat http://127.0.0.1:1234 400
   echo "5. from any other PAIR node run:  curl 127.0.0.1:1234/v1/chat/completions -d '{\"model\":\"$MODEL\",...}'"
 }
@@ -50,6 +60,7 @@ case "$cmd" in
     [ -n "$TARGET" ] && [ -n "$MODEL" ] && [ -n "$DETECT" ] || { echo "install needs --target, --model, --detect" >&2; exit 2; }
     [ -e "$DETECT" ] || { echo "--detect path $DETECT does not exist; PAIR will never probe (gate 1)" >&2; exit 1; }
     curl -s -m 10 -o /dev/null -w '%{http_code}\n' "http://$TARGET/v1/models" | grep -q '^200$' || { echo "http://$TARGET/v1/models is not 200; PAIR's probe would fail" >&2; exit 1; }
+    echo "pre-checks: $DETECT exists; http://$TARGET/v1/models answers 200"
     systemctl disable --now "$SOCKET" "$SERVICE" 2>/dev/null || true
     ! listening_1235 || { echo "something already listens on 1235; stop it first (gate 3)" >&2; exit 1; }
     install -m 0644 "$HERE/pair-adopt-1235.socket" /etc/systemd/system/
