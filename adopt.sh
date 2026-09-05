@@ -29,7 +29,8 @@ listening_1235() { ss -Hltn 'sport = :1235' | grep -q .; }
 chat() {  # $1 = base url, $2 = max_tokens. Prints the result; exits 1 unless finish_reason=stop.
   local body
   body="$(curl -s -m 180 "$1/v1/chat/completions" -H 'content-type: application/json' \
-    -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with the single word: routed\"}],\"max_tokens\":$2}")"
+    -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with the single word: routed\"}],\"max_tokens\":$2}")" \
+    || { echo "   FAIL: no answer from $1 (curl rc=$?, 180 s limit) — is PAIR's proxy on :1234 up and is $TARGET answering?"; exit 1; }
   python3 - "$body" <<'PY' || { echo "   FAIL: no completion with finish_reason=stop from $1 — response was: ${body:0:300}"; exit 1; }
 import sys, json
 try: d = json.loads(sys.argv[1])
@@ -46,7 +47,8 @@ do_verify() {
   [ -f "$OVERRIDE" ] || { echo "   FAIL: $OVERRIDE is gone — PAIR removed it (gate 2: port back at the bundled default)"; exit 1; }
   ls -la "$OVERRIDE"; sz=$(wc -c < "$OVERRIDE"); [ "$sz" -gt 500 ] || { echo "   FAIL: $sz bytes — PAIR rewrote it (gate 3). Was 1235 free when PAIR started?"; exit 1; }
   echo "2. forwarder:"; systemctl is-active "$SOCKET" || { echo "   FAIL: $SOCKET is not active (is PAIR's proxy on :1234? see journalctl -u $SOCKET)"; exit 1; }
-  curl -s -m 10 127.0.0.1:1235/v1/models | head -c 200; echo
+  out="$(curl -s -m 10 127.0.0.1:1235/v1/models)" || { echo "   FAIL: $SOCKET is active but nothing answered on :1235 (curl rc=$?) — is $TARGET up? see journalctl -u $SERVICE"; exit 1; }
+  echo "   ${out:0:200}"
   echo "3. PAIR engine surface (up to 4 min):"
   seen=0; for i in $(seq 1 16); do out="$(curl -s -m 5 127.0.0.1:14322/v1/models)"; echo "   t+$((i*15))s $out"; grep -q "$MODEL" <<<"$out" && { seen=1; break; }; sleep 15; done
   [ "$seen" = 1 ] || { echo "   FAIL: $MODEL never appeared under lmstudio (gate 1: does --detect exist on this box? is the id exactly what $TARGET/v1/models lists?)"; exit 1; }
