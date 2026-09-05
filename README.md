@@ -8,8 +8,12 @@ answers `GET /v1/models` on the box.
 One JSON file, two systemd units, one drop-in. PAIR probes, adopts, routes. It never owns the process
 and has no code path that can stop it.
 
-Tested on PAIR **0.91.7** (Linux, `linux/amd64` and `linux/arm64`, headless `nvpair` under systemd).
-This is **unsupported**: it leans on three conditions in PAIR's source that a release can change
+Lineage, so you know what was actually run. The `lmstudio` manifest override started on Windows with
+PAIR spawning llama.cpp, was repeated on macOS, then on Linux `amd64` for llama.cpp and for servers PAIR
+cannot start (an ExLlamaV3 / TabbyAPI box and llama-servers bound to LAN addresses), and finished on
+`linux/arm64` with a DGX Spark pair serving vLLM. `adopt.sh` itself has run end to end on the Spark
+(PAIR **0.91.7**, headless `nvpair` under systemd); the amd64 adoptions used the same manifest and units
+through the per-node scripts this repo was distilled from. This is **unsupported**: it leans on three conditions in PAIR's source that a release can change
 without an error message. Keep the files in version control and re-run `verify` after every update.
 
 ## Why it takes more than the obvious file
@@ -138,6 +142,11 @@ Removes the units and drop-in, restores the backed-up override (or deletes ours)
 | `pair-adopt-1235.service.in` | `systemd-socket-proxyd` to `@TARGET@` |
 | `nvpair-10-pair-adopt.conf` | drop-in so the socket follows every PAIR restart |
 | `sweep.sh` | one completion per advertised model id |
+
+## Read more
+
+- [The router deleted my config file twice. Both times it was working as designed.](https://jds5.com/posts/the-router-deleted-my-config-twice/) — the four attempts behind these three gates.
+- [NVIDIA's AI router says it supports two engines. It routes to a third if you lie to it in one file.](https://jds5.com/posts/llamacpp-behind-nvidia-pair-one-file-four-roadblocks/) — the other shape: PAIR spawning llama.cpp itself.
 
 ## Credits and license
 
